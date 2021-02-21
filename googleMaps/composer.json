@@ -1,0 +1,10 @@
+{
+    "name": "mohawk/lab1",
+    "authors": [
+        {
+            "name": "Nick Tomkin",
+            "email": "tomkin@gmail.com"
+        }
+    ],
+    "require": {}
+}

@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<!--
+    
+  I, Michael Mena, 000817498 certify that this material is my original work.  No other person's work has been used without due acknowledgement.
+ 
+  Date: 1/22/2021
+  
+  This file is a website that filters by different kinds of schools and is used as a Google Maps excercise
+  Based off of the starter code which was intended to be used to help with the assignment
+
+-->
+
+<html>
+
+<head>
+    <title>Lab 1 – Educational Institution Map</title>
+
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"
+        integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0=" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js"
+        integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q"
+        crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js"
+        integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl"
+        crossorigin="anonymous"></script>
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDoH3oyYR5nzERWlIBQ4XLVZLtm63ZoIzc&callback=initMap&libraries=&v=weekly"
+        defer></script>
+    <script src="education.js"></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css"
+        integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+
+    <script>
+        let map;
+        let directionsService;
+        let directionsRenderer;
+        let geocoder;
+        let infoWindow;
+        let markers = [];
+        let centerLatLng = { lat: 43.2464343, lng: -79.8618984 };
+        let selectedFilter = "All";
+        let userLocation;
+
+        function initMap() {
+            directionsService = new google.maps.DirectionsService();
+            directionsRenderer = new google.maps.DirectionsRenderer();
+            geocoder = new google.maps.Geocoder();
+            map = new google.maps.Map(document.getElementById("map"), {
+                zoom: 13,
+                center: centerLatLng,
+                mapTypeControl: false,
+                fullscreenControl: false,
+            });
+
+            google.maps.event.addListener(map, 'bounds_changed', function (evt) {
+                console.log('Bounds changed!');
+                
+            });
+
+            infoWindow = new google.maps.InfoWindow();
+
+            setupMarkers();
+            setupEvents();
+            detectUserLocation();
+        }
+
+        function setupEvents() {
+            $(document).on('click', '#infowindow-directions-button', function (evt) {
+                //  Capture the location's lat/lng from the element's data attributes
+                let location = { lat: $(evt.target).data('lat'), lng: $(evt.target).data('lng') };
+
+                //  Get directions from the selected marker
+                getAndDisplayDirections(location);
+
+                //  Prevents the form from being submitted
+                //  https://developer.mozilla.org/en-US/docs/Web/API/Event/preventDefault
+                evt.preventDefault();
+                return false;
+            });
+
+            //  Closing the directions panel, clearing
+            $(document).on('click', '#map-directions-clear-button, #directions-close-button', function (evt) {
+                clearDirections();
+
+                //  Close the actual panel
+                $('body').removeClass('directions-open');
+
+                //  Prevents the form from being submitted
+                evt.preventDefault();
+                return false;
+            });
+
+
+
+
+
+
+
+            //  User clicks "Directions" button on bottom
+            $(document).on('click', '#directions-from-button', function (evt) {
+                let directionsName = $('#directions-from-name').val();
+                let directionsAddress = $('#directions-from-address').val();
+
+                getAndDisplayDirections(directionsAddress);
+
+                geocoder.geocode({ address: directionsAddress }, (results, status) => {
+                    if (status === "OK") {
+                        map.setCenter(results[0].geometry.location);
+                        ///////
+
+
+                        let markerOne = new google.maps.Marker({
+                            position: directionsAddress,
+                            map: map,
+                            title: directionsName,
+                        });
+
+
+
+                        ///////
+                        addMarker(markerOne);
+                    } else {
+                        console.log("Geocode was not successful for the following reason: " + status);
+                    }
+                });
+
+
+
+
+
+
+                console.log(directionsName, directionsAddress);
+
+                //  Prevents the form from being submitted
+                evt.preventDefault();
+                return false;
+            });
+
+            //  Selecting a filter
+            $('#map-filters input[type=radio]').on('change', function (evt) {
+                selectedFilter = evt.target.value;
+
+                //  We should re-draw the markers with the new filter value
+                setupMarkers();
+            });
+        }
+
+        function detectUserLocation() {
+            if (navigator.geolocation) {
+                //  Get the user's location using the browser's Geolocation API
+                navigator.geolocation.getCurrentPosition(
+                    //  Success
+                    (position) => {
+                        const pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                        };
+
+                        //  Set user location for rest of application
+                        userLocation = pos;
+
+                        //  We now have the location, let's set it on the map and populate the infoWindow
+                        infoWindow.setPosition(pos);
+                        infoWindow.setContent(`
+                                <strong>You are here</strong><br>
+                                Latitude: ${pos.lat}<br>
+                                Longitude: ${pos.lng}
+                            `);
+                        infoWindow.open(map);
+
+                        //  Center the map to the user's position
+                        map.setCenter(pos);
+                    },
+                    //  Failure
+                    () => {
+                        //  Couldn't get the user's location for some reason.
+                        handleLocationError(true, infoWindow, map.getCenter());
+                    }
+                );
+            } else {
+                // Browser doesn't support Geolocation
+                handleLocationError(false, infoWindow, map.getCenter());
+            }
+        }
+
+        function getAndDisplayDirections(destination) {
+            //  Clear all the markers first
+            clearMarkers();
+
+            //  Set the directions renderer to use the map and panel
+            directionsRenderer.setMap(map);
+            directionsRenderer.setPanel(document.getElementById('map-directions-content'));
+
+            //  Construct our request for the directions
+            let request = {
+                origin: userLocation,
+                destination: destination,
+                travelMode: 'DRIVING'
+            };
+
+            directionsService.route(request, function (response, status) {
+                if (status == 'OK') {
+                    //  Set the directions panel as the place to insert the directions
+                    directionsRenderer.setDirections(response);
+
+                    // Open the panel
+                    $('body').addClass('directions-open');
+                }
+            });
+        }
+
+        function handleLocationError(browserHasGeolocation, infoWindow, pos) {
+            //  Handle errors with location
+            infoWindow.setPosition(pos);
+            infoWindow.setContent(
+                browserHasGeolocation ? "Error: The Geolocation service failed." : "Error: Your browser doesn't support geolocation."
+            );
+            infoWindow.open(map);
+        }
+
+        function setupMarkers() {
+            
+
+            clearMarkers();
+            let marker;
+
+            if (selectedFilter !== "All") {
+                //  If "All" isn't selected, then filter by CATEGORY
+                //  https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/filter
+                educationalInstitutions = education.filter((val, idx, array) => {
+                    return val.CATEGORY == selectedFilter;
+                });
+            } else {
+                //  Otherwise, show everything
+                educationalInstitutions = education;
+            }
+
+
+
+
+            //  Loop through each institution and add the marker for it
+            educationalInstitutions.forEach((val, idx, array) => {
+                let latLng = { lat: val.LATITUDE, lng: val.LONGITUDE };
+                let infoWindowContentUserLocation = `
+                        <h6>${val.NAME}</h6>
+                        <p>${val.ADDRESS}</p>
+                        <p>${val.CATEGORY}</p>
+                        <p>${val.COMMUNITY}</p>
+                        <button type="button" class="btn btn-sm" id="infowindow-directions-button" data-lat="${val.LATITUDE}" data-lng="${val.LONGITUDE}">Directions</button>
+                    `;
+                let infoWindowContentNoLocation = `
+                        <h6>${val.NAME}</h6>
+                        <p>${val.ADDRESS}</p>
+                        <p>${val.CATEGORY}</p>
+                        <p>${val.COMMUNITY}</p>
+                    `;
+
+
+                //////////////////custom marker stuff
+
+
+
+                //apple marker
+                var elementaryMarker = {
+                    url: "apple.png",
+                    scaledSize: new google.maps.Size(25, 30),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                };
+                var middleMarker = {
+                    url:"middle.png",
+                    scaledSize: new google.maps.Size(45, 35),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                    
+                }
+                //H marker
+                var secondaryMarker = {
+                    url: "h.png",
+                    scaledSize: new google.maps.Size(30, 30),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                };
+                var postsecondaryMarker = {
+                    url: "college.png",
+                    scaledSize: new google.maps.Size(30, 30),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                }
+                var alternativeMarker = {
+                    url: "sun.png",
+                    scaledSize: new google.maps.Size(45, 35),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                }
+                var adultMarker = {
+                    url: "adult.png",
+                    scaledSize: new google.maps.Size(30, 40),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+
+                }
+                var ttMarker = {
+                    url: "jordan.png",
+                    scaledSize: new google.maps.Size(40, 40),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                }
+
+
+
+                var markerType;
+
+
+                if(val.CATEGORY == "Elementary School"){
+                    markerType = elementaryMarker;
+                }
+                else if(val.CATEGORY == "Middle School"){
+                    markerType = middleMarker;
+                }
+                else if (val.CATEGORY == "Secondary School"){
+                    markerType = secondaryMarker;
+                }
+                else if (val.CATEGORY == "Post Secondary"){
+                    markerType = postsecondaryMarker;
+                }
+                else if (val.CATEGORY == "Alternative Education"){
+                    markerType = alternativeMarker;
+                }
+                else if (val.CATEGORY == "Adult Learning"){
+                    markerType = adultMarker;
+                }
+                else if (val.CATEGORY == "Section 23 Program"){
+                    markerType = ttMarker;
+                }
+                else{
+                    markerType = {
+                    url:"middle.png",
+                    scaledSize: new google.maps.Size(0, 0),
+                    origin: new google.maps.Point(0, 0), 
+                    anchor: new google.maps.Point(0, 0)
+                    
+                }
+                }
+                
+                marker = new google.maps.Marker({
+                    position: latLng,
+                    map: map,
+                    title: val.NAME,
+                    visible: true,
+                    icon: markerType
+                
+                });
+
+
+                google.maps.event.addListener(marker, 'click', function () {
+                    infoWindow.setContent(userLocation ? infoWindowContentUserLocation : infoWindowContentNoLocation);
+                    infoWindow.open(map, this);
+                });
+
+                markers.push(marker);
+
+                
+            });
+
+            centerMap();
+        }
+
+        function centerMap() {
+            let bounds = new google.maps.LatLngBounds();
+
+            markers.forEach((marker) => {
+                let markerLatLng = { lat: marker.getPosition().lat(), lng: marker.getPosition().lng() };
+                bounds.extend(markerLatLng);
+            });
+
+            map.fitBounds(bounds);
+            map.setCenter(bounds.getCenter());
+        }
+
+        function clearMarkers() {
+            markers.forEach((marker, idx, array) => {
+                marker.visible = false;
+                marker.setMap(null);
+            });
+
+        }
+
+        function addMarker(latLng, title) {
+            let singleMarker = new google.maps.Marker({
+                position: latLng,
+                map: map,
+                title: title,
+            });
+
+            singleMarker.setMap(map);
+        }
+
+        function clearDirections() {
+            $('#map-directions-content').html('');
+
+            directionsRenderer.setMap(null);
+            directionsRenderer.setPanel(null);
+
+            setupMarkers();
+        }
+    </script>
+
+    <style>
+        /* Always set the map height explicitly to define the size of the div element that contains the map. */
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        #hud #map-filters {
+            position: absolute;
+            left: 0;
+            top: 4%;
+            z-index: 100;
+            background: white;
+            padding: 20px 0;
+            border-radius: 0 10px 10px 0;
+        }
+
+        #hud #map-filters ul {
+            padding: 0;
+            margin: 20px 0 0 0;
+            list-style: none;
+        }
+
+        #hud #map-filters ul li {
+            padding: 0 50px 0 20px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        #hud #map-filters ul li:last-child {
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        #hud #map-filters label {
+            cursor: pointer;
+        }
+
+        #hud #map-address {
+            position: absolute;
+            left: 4%;
+            right: 4%;
+            bottom: 4%;
+            z-index: 100;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+        }
+
+        #hud #map-directions {
+            position: absolute;
+            right: -400px;
+            top: 4%;
+            width: 300px;
+            height: 80%;
+            z-index: 100;
+            background: white;
+            padding: 20px;
+            border-radius: 10px 0 0 10px;
+            transition: right 0.2s ease-in-out;
+        }
+
+        #hud #map-directions #directions-close-button {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+        }
+
+        body.directions-open #hud #map-directions {
+            right: 0;
+        }
+
+        .header {
+            height: 5%;
+        }
+
+        .content {
+            height: 90%;
+            overflow-y: scroll;
+        }
+
+        .actions {
+            height: 5%;
+        }
+
+        .btn:focus {
+            outline: none !important;
+            box-shadow: none;
+        }
+
+        /* Optional: Makes the sample page fill the window. */
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <div id="hud">
+        <form id="map-filters">
+            <ul>
+                <li>
+                    <h5>Filters</h5>
+                </li>
+                <li><label for="All"><input type="radio" value="All" id="All" name="map_filter" checked> All</label>
+                </li>
+                <li><label for="Elementary"><input type="radio" value="Elementary School" id="Elementary"
+                            name="map_filter"> Elementary</label></li>
+                <li><label for="Middle"><input type="radio" value="Middle School" id="Middle" name="map_filter">
+                        Middle</label></li>
+                <li><label for="Secondary"><input type="radio" value="Secondary School" id="Secondary"
+                            name="map_filter"> Secondary</label></li>
+                <li><label for="Post"><input type="radio" value="Post Secondary" id="Post" name="map_filter">
+                        Post-Secondary</label></li>
+                <li><label for="Alternative"><input type="radio" value="Alternative Education" id="Alternative"
+                            name="map_filter"> Alternative</label></li>
+                <li><label for="Adult"><input type="radio" value="Adult Learning" id="Adult" name="map_filter">
+                        Adult</label></li>
+                <li><label for="Section"><input type="radio" value="Section 23 Program" id="Section" name="map_filter">
+                        Section 23</label></li>
+            </ul>
+        </form>
+
+        <form id="map-address" class="fluid-container">
+            <div class="row">
+                <div class="col-3 p-2">
+                    <input type="text" id="directions-from-name" name="directions-from-name" class="form-control"
+                        placeholder="Label">
+                </div>
+                <div class="col p-2">
+                    <input type="text" id="directions-from-address" name="directions-from-address" class="form-control"
+                        placeholder="123 Main Street East, Hamilton, Ontario">
+                </div>
+                <div class="col-2 p-2 d-grid gap-2 md-block">
+                    <button type="button" class="btn btn-primary btn-block"
+                        id="directions-from-button">Directions</button>
+                </div>
+            </div>
+        </form>
+
+        <form id="map-directions">
+            <div class="header">
+                <h5>Directions</h5>
+                <button type="button" class="close" id="directions-close-button" data-dismiss="modal"
+                    aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+
+            <div class="content" id="map-directions-content"></div>
+
+            <div class="actions">
+                <button type="button" class="btn btn-block btn-secondary" id="map-directions-clear-button">Clear
+                    Directions</button>
+            </div>
+        </form>
+
+    </div>
+
+</body>
+
+</html>
